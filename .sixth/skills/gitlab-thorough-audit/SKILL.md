@@ -51,8 +51,9 @@ For runtime validation, use the serial lane runner below.
 
 - `run-readonly` runs the existing `auth-api`, `idor`, `role-privesc`, and
   read-only ATT&CK emulation lanes under one timestamp.
-- `run-kinetic` runs the write-side privesc/IDOR lane only after the existing
-  egress-containment assertion passes.
+- `run-kinetic` hard-verifies VM egress containment (fail closed, via
+  `egress-verify.sh`) and only then runs the write-side privesc/IDOR lane. Pass
+  `AUTO_LOCKDOWN=1` to apply the host nftables lockdown first.
 - `all` means `plan -> gdk-status -> run-readonly -> consolidate`; it deliberately
   does not run kinetic tests.
 

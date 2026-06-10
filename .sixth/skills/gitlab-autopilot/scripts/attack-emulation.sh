@@ -32,15 +32,10 @@ c_g=$'\033[1;32m'; c_y=$'\033[1;33m'; c_b=$'\033[1;34m'; c_r=$'\033[0m'
 log(){ printf '%s\n' "$*" >&2; }
 row(){ printf '%s\n' "$*" >>"$RESULTS"; printf '%s\n' "$*" >&2; }
 
-# --- scope gate ---------------------------------------------------------------
-scope_list(){ awk -v sec="$1" '
-  $0 ~ "^"sec":" { inblk=1; next }
-  inblk && /^[a-z_]+:/ && $0 !~ /^[[:space:]]/ { inblk=0 }
-  inblk { line=$0; sub(/#.*/,"",line);
-    if (line ~ /^[[:space:]]*-[[:space:]]*/){ sub(/^[[:space:]]*-[[:space:]]*/,"",line); gsub(/[" ]/,"",line); if(line!="") print line } }
-' "$SCOPE_FILE"; }
-IN="$(scope_list in_scope | paste -sd, -)"; OUTL="$(scope_list out_of_scope | paste -sd, -)"
-node "$GUARD" --target "$VM_IP" --in "$IN" --out "$OUTL" >/dev/null || { log "SCOPE BLOCKED $VM_IP"; exit 1; }
+# --- scope gate (shared, safety-critical parser lives in scope-lib.sh) --------
+# shellcheck source=/dev/null
+. "${REPO_ROOT}/.sixth/skills/scope-authorization-guard/scripts/scope-lib.sh"
+scope_guard "$VM_IP" "$SCOPE_FILE" "$GUARD" >/dev/null || { log "SCOPE BLOCKED $VM_IP"; exit 1; }
 log "${c_b}Scope OK: $VM_IP ALLOWED — read-only ATT&CK emulation${c_r}"
 [ -s "$ADMIN_TOK_FILE" ] || { log "admin token $ADMIN_TOK_FILE missing"; exit 1; }
 TOKEN="$(tr -d '\r\n' < "$ADMIN_TOK_FILE")"

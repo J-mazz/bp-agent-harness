@@ -33,7 +33,7 @@ every observation and decide what becomes a report.
 - `security-headers-audit` — security headers + cookie flags.
 - `tls-config-check` — TLS/SSL configuration hygiene.
 - `exposed-files-misconfig` — safe misconfiguration checks (robots, security.txt, `.git`, CORS…).
-- `gitlab-test-vm` — (GitLab) launch a local self-managed GitLab CE VM for disruptive/DoS testing you must never run against gitlab.com.
+- `gitlab-test-vm` — (GitLab) manage a pre-created local self-managed GitLab VM (boot/status/ssh + GDK helpers) for disruptive/DoS testing you must never run against gitlab.com.
 - `gitlab-autopilot` — (local-lab) scope-gated SAST + DAST run against your own local GitLab VM and a full upstream source clone.
 - `gitlab-thorough-audit` — (local-lab) subagent tasking plus serial audit lanes for GDK readiness, authz, IDOR/BOLA, GraphQL/REST parity, and CI/CD privilege escalation.
 - `hackerone-report` — HackerOne-ready Markdown report from confirmed findings.

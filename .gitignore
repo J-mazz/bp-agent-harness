@@ -6,7 +6,7 @@ findings/**
 # Operator-specific program scopes may contain sensitive endpoints.
 # Commit deliberately; ignore by default. Remove the next lines to track scopes in git.
 programs/**
-!programs/.gitkeep
+!programs/_example-program
 !programs/_example-program/**
 
 # Secrets / local config

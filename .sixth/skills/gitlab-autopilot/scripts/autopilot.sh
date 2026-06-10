@@ -16,12 +16,14 @@ if [ -f "${REPO_ROOT}/.env" ]; then set -a; . "${REPO_ROOT}/.env"; set +a; fi
 # ── Config ────────────────────────────────────────────────────────────────────
 PROGRAM="local-lab"
 VM_IP="${VM_IP:-192.168.122.7}"
+VM_NAME="${VM_NAME:-debian13}"
 TARGET_URL="http://${VM_IP}"
 KALI_VM="${KALI_VM:-kali-og-testing}"
 CONN="qemu:///system"
 
 SCOPE_FILE="${REPO_ROOT}/programs/${PROGRAM}/scope.yaml"
 GUARD="${REPO_ROOT}/.sixth/skills/scope-authorization-guard/scripts/check-scope.mjs"
+SCOPE_LIB="${REPO_ROOT}/.sixth/skills/scope-authorization-guard/scripts/scope-lib.sh"
 GDK_HELPER="${REPO_ROOT}/.sixth/skills/gitlab-test-vm/scripts/gdk-vm.sh"
 THOROUGH_HELPER="${REPO_ROOT}/.sixth/skills/gitlab-thorough-audit/scripts/subagent-audit.sh"
 SRC="${SRC:-${REPO_ROOT}/findings/gitlab/source/gitlab}"
@@ -36,44 +38,23 @@ warn() { printf '\033[1;33m[autopilot]\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31m[autopilot] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"; }
 
-# ── Scope gate: parse in/out lists from scope.yaml and ask the guard ──────────
-# Minimal YAML reader: collects "- value" items under in_scope:/out_of_scope:.
-scope_list() {
-  local section="$1"
-  awk -v sec="$section" '
-    $0 ~ "^"sec":" { inblk=1; next }
-    inblk && /^[a-z_]+:/ && $0 !~ /^[[:space:]]/ { inblk=0 }
-    inblk {
-      line=$0
-      sub(/#.*/, "", line)                 # strip comments
-      if (line ~ /^[[:space:]]*-[[:space:]]*/) {
-        sub(/^[[:space:]]*-[[:space:]]*/, "", line)
-        gsub(/[" ]/, "", line)
-        if (line != "") print line
-      }
-    }
-  ' "$SCOPE_FILE"
-}
+# ── Scope gate: the parser + guard now live in one sourced helper ─────────────
+# shellcheck source=/dev/null
+. "$SCOPE_LIB"
 
 guard() {
   # guard <target> — abort the whole run if the target is not in scope.
-  local target="$1" inlist outlist verdict
+  local target="$1"
   [ -f "$SCOPE_FILE" ] || die "scope file missing: $SCOPE_FILE"
-  inlist="$(scope_list in_scope  | paste -sd, -)"
-  outlist="$(scope_list out_of_scope | paste -sd, -)"
-  [ -n "$inlist" ] || die "refusing to run: in_scope is empty in $SCOPE_FILE"
   log "Scope check: ${target}"
-  if node "$GUARD" --target "$target" --in "$inlist" --out "$outlist"; then
-    return 0
-  else
-    die "scope guard BLOCKED ${target} — aborting (this protects gitlab.com)."
-  fi
+  scope_guard "$target" "$SCOPE_FILE" "$GUARD" \
+    || die "scope guard BLOCKED ${target} — aborting (this protects gitlab.com)."
 }
 
 mkout() { mkdir -p "$OUT/$1"; }
 
 vm_up() {
-  virsh -c "$CONN" domstate debian13 2>/dev/null | grep -q running || return 1
+  virsh -c "$CONN" domstate "$VM_NAME" 2>/dev/null | grep -q running || return 1
   curl -s -o /dev/null --max-time 5 "$TARGET_URL/users/sign_in"
 }
 

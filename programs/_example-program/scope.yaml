@@ -1,0 +1,36 @@
+# EXAMPLE scope — for reference only. Uses RFC 2606 reserved example.com.
+# `enrolled: false` makes the scope-authorization-guard REFUSE this program on purpose.
+# Copy this folder to programs/<real-program>/ and fill from the real HackerOne policy.
+
+program:
+  name: "example-program"
+  platform: hackerone
+  handle: "example"
+  policy_url: "https://hackerone.com/example"
+  enrolled: false          # set true ONLY for a program you are actually enrolled in
+
+rules:
+  test_accounts_only: true
+  required_user_agent: "h1-yourhandle-research"
+  rate_limit_note: "Illustrative only — harness still defaults to serial, delayed requests."
+  prohibited:
+    - "denial of service / load testing"
+    - "automated scanning without permission"
+    - "accessing other users' data"
+
+in_scope:
+  domains:
+    - "example.com"
+    - "*.example.com"
+  urls: []
+  ip_ranges: []
+  mobile_apps: []
+  notes: "Illustrative. Real entries must be copied verbatim from the program policy."
+
+out_of_scope:
+  domains:
+    - "blog.example.com"
+    - "*.dev.example.com"
+  urls: []
+  ip_ranges: []
+  notes: "Out-of-scope always wins over in_scope."

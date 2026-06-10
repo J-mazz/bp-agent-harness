@@ -77,8 +77,9 @@ findings/<program>/            ← evidence & draft reports (git-ignored)
 | `security-headers-audit` | HTTP security headers & cookie flag review. |
 | `tls-config-check` | TLS/SSL protocol, cipher, and certificate hygiene. |
 | `exposed-files-misconfig` | Safe checks for robots/security.txt, exposed `.git`/`.env`, CORS, dir listing. |
-| `gitlab-test-vm` | (GitLab) launch/manage a local self-managed GitLab CE VM for disruptive/DoS/destructive testing that must never hit gitlab.com. |
+| `gitlab-test-vm` | (GitLab) Manage a pre-created local self-managed GitLab VM (boot/status/ssh/GDK helpers) for disruptive/DoS/destructive testing that must never hit gitlab.com. |
 | `gitlab-autopilot` | (local-lab) Scope-gated SAST + DAST run against the operator-owned local GitLab VM and a full upstream source clone. |
+| `gitlab-thorough-audit` | (local-lab) Subagent tasking + serial audit lanes for GDK readiness, authz bypass, IDOR/BOLA, GraphQL/REST parity, and CI/CD privilege escalation. |
 | `hackerone-report` | Turn confirmed findings into a HackerOne-ready Markdown report. |
 
 ## Standard loop

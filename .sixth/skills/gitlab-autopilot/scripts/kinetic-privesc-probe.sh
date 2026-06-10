@@ -20,6 +20,10 @@ FOREIGN1="${FOREIGN1:-1}"; FOREIGN2="${FOREIGN2:-2}"   # projects the roles are 
 CAROL_ID="${CAROL_ID:-5}"; DAVE_ID="${DAVE_ID:-6}"; BOB_ID="${BOB_ID:-4}"
 SCOPE_FILE="${REPO_ROOT}/programs/${PROGRAM}/scope.yaml"
 GUARD="${REPO_ROOT}/.sixth/skills/scope-authorization-guard/scripts/check-scope.mjs"
+SCOPE_LIB="${REPO_ROOT}/.sixth/skills/scope-authorization-guard/scripts/scope-lib.sh"
+EGRESS_VERIFY="${REPO_ROOT}/.sixth/skills/gitlab-test-vm/scripts/egress-verify.sh"
+SSH_USER="${SSH_USER:-debian}"
+SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519}"
 TOK_ENV="${TOK_ENV:-$HOME/.gl_role_tokens.env}"
 
 TS="${TS:-$(date +%Y%m%d-%H%M%S)}"
@@ -29,22 +33,21 @@ mkdir -p "$OUT"; BODY="$OUT/.body"
 c_red=$'\033[1;31m'; c_grn=$'\033[1;32m'; c_yel=$'\033[1;33m'; c_rst=$'\033[0m'
 log(){ printf '%s\n' "$*" >&2; }
 
-# --- scope gate ---------------------------------------------------------------
-scope_list(){ awk -v sec="$1" '
-  $0 ~ "^"sec":" { inblk=1; next }
-  inblk && /^[a-z_]+:/ && $0 !~ /^[[:space:]]/ { inblk=0 }
-  inblk { line=$0; sub(/#.*/,"",line);
-    if (line ~ /^[[:space:]]*-[[:space:]]*/){ sub(/^[[:space:]]*-[[:space:]]*/,"",line); gsub(/[" ]/,"",line); if(line!="") print line } }
-' "$SCOPE_FILE"; }
-IN="$(scope_list in_scope | paste -sd, -)"; OUT_L="$(scope_list out_of_scope | paste -sd, -)"
-node "$GUARD" --target "$VM_IP" --in "$IN" --out "$OUT_L" >/dev/null || { log "SCOPE BLOCKED $VM_IP"; exit 1; }
+# --- scope gate (shared, safety-critical parser lives in scope-lib.sh) --------
+# shellcheck source=/dev/null
+. "$SCOPE_LIB"
+scope_guard "$VM_IP" "$SCOPE_FILE" "$GUARD" >/dev/null || { log "SCOPE BLOCKED $VM_IP"; exit 1; }
 log "Scope OK: $VM_IP ALLOWED — KINETIC privesc/IDOR suite (write, auto-revert)"
 
-# --- egress containment assertion (must be blocked before kinetic testing) ----
-if ssh -o ConnectTimeout=6 "debian@${VM_IP}" 'curl -s -o /dev/null -m 6 https://1.1.1.1/ 2>/dev/null'; then
-  log "${c_red}ABORT: VM egress is OPEN — run egress-lockdown.sh apply first.${c_rst}"; exit 3
-fi
-log "Egress containment OK: VM cannot reach the internet."
+# --- egress containment assertion (FAIL CLOSED before any write) --------------
+# Delegated to egress-verify.sh, which proves over SSH (honouring SSH_USER/
+# SSH_KEY) that the VM cannot reach off-host and treats ANY uncertainty — SSH
+# failure, missing curl, indeterminate result — as ABORT. The old inline check
+# was fail-OPEN: a non-zero ssh for any reason was misread as "contained".
+VM_IP="$VM_IP" SSH_USER="$SSH_USER" SSH_KEY="$SSH_KEY" bash "$EGRESS_VERIFY" || {
+  log "${c_red}ABORT: VM egress containment is UNPROVEN — run egress-lockdown.sh apply first.${c_rst}"; exit 3
+}
+log "Egress containment verified: VM cannot reach the internet."
 
 # --- tokens -------------------------------------------------------------------
 # shellcheck disable=SC1090

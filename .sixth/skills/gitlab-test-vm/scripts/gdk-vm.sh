@@ -39,30 +39,13 @@ warn() { printf '\033[1;33m[gdk-vm]\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31m[gdk-vm] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"; }
 
-scope_list() {
-  local section="$1"
-  awk -v sec="$section" '
-    $0 ~ "^"sec":" { inblk=1; next }
-    inblk && /^[a-z_]+:/ && $0 !~ /^[[:space:]]/ { inblk=0 }
-    inblk {
-      line=$0
-      sub(/#.*/, "", line)
-      if (line ~ /^[[:space:]]*-[[:space:]]*/) {
-        sub(/^[[:space:]]*-[[:space:]]*/, "", line)
-        gsub(/[" ]/, "", line)
-        if (line != "") print line
-      }
-    }
-  ' "$SCOPE_FILE"
-}
+# Scope parser + guard live in one sourced helper (no copy-paste drift).
+# shellcheck source=/dev/null
+. "${REPO_ROOT}/.sixth/skills/scope-authorization-guard/scripts/scope-lib.sh"
 
 guard() {
   [ -f "$SCOPE_FILE" ] || die "scope file missing: $SCOPE_FILE"
-  local inlist outlist
-  inlist="$(scope_list in_scope | paste -sd, -)"
-  outlist="$(scope_list out_of_scope | paste -sd, -)"
-  [ -n "$inlist" ] || die "refusing to run: in_scope is empty in $SCOPE_FILE"
-  node "$GUARD" --target "$VM_IP" --in "$inlist" --out "$outlist" >/dev/null \
+  scope_guard "$VM_IP" "$SCOPE_FILE" "$GUARD" >/dev/null \
     || die "scope guard BLOCKED ${VM_IP} — refusing to touch the VM."
 }
 

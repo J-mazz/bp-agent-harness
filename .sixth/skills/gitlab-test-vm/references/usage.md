@@ -7,46 +7,50 @@ research that must not run against `gitlab.com` (DoS, destructive, high-volume, 
 
 ```bash
 S=.sixth/skills/gitlab-test-vm/scripts/gitlab-vm.sh
-$S up         # create + boot + provision GitLab (idempotent, safe to re-run)
+$S up         # boot the EXISTING VM and wait for SSH (idempotent)
 $S status     # VM state, IP, URL, gitlab-ctl health, root login line
-$S url        # -> http://192.168.122.60
+$S url        # -> http://192.168.122.7
 $S password   # initial root password (valid 24h after first reconfigure)
 $S ssh        # shell into the VM (user: debian, passwordless sudo)
 $S console    # serial console (exit with Ctrl+])
 $S stop       # graceful shutdown
 $S start      # boot again
-$S destroy    # delete VM + disk (asks to confirm)
+$S gdk-status # scope-gated GDK/toolchain/resource inventory inside the VM
 ```
 
 ## What `up` does (rootless, via the libvirt daemon)
-1. Preflight: confirms `qemu:///system` is reachable (you are in the `libvirt` group).
-2. Ensures the libvirt `default` NAT network + storage pool exist and are running, and pins
-   a DHCP reservation so the VM always gets `192.168.122.60`.
-3. Downloads the Debian 12 generic cloud image into `~/.cache/gitlab-test-vm/` and verifies
-   it against the official `SHA512SUMS`.
-4. Generates a dedicated SSH keypair and renders `cloud-init.user-data.tmpl`.
-5. Creates a qcow2 volume in the `default` pool, uploads the base image, resizes to 50 GB.
-6. `virt-install --import --cloud-init` boots the VM; cloud-init installs GitLab Omnibus and
-   writes a completion marker at `/var/lib/gitlab-provision-done`.
-7. Waits for SSH, then for the marker, then prints status.
+This script **adopts an existing, manually-created VM** — it does not provision one.
 
-First run takes several minutes (image download + ~1 GB GitLab package + `reconfigure`).
-Subsequent `up` calls are no-ops once the VM is healthy.
+1. Preflight: confirms `virsh` + `ssh` exist and `qemu:///system` is reachable (you are in
+   the `libvirt` group).
+2. Confirms the domain named by `VM_NAME` (default `debian13`) exists; if not, it stops with
+   "create it manually first".
+3. Starts the domain if it is not already running.
+4. Waits for key-based SSH on `VM_IP` (default `192.168.122.7`), then prints `status`.
 
-## Tuning (environment variables)
+There is no image download, cloud-init rendering, or `virt-install` step. Create the VM by
+hand (any method you like) with Debian + GitLab Omnibus, key-based SSH for `SSH_USER`, and
+passwordless `sudo`. An example `scripts/cloud-init.user-data.tmpl` is provided purely as a
+reference for that manual build; no script reads it.
+
+## Configuration (environment variables or `.env`)
+The wrapper only *adopts* a VM, so it reads identity/connection settings — it does not size
+or create hardware. Set these in the repo `.env` or the environment.
+
 | Var | Default | Notes |
 |-----|---------|-------|
-| `VM_MEM_MB` | `8192` | Raise for production-like DoS sizing. |
-| `VM_VCPUS` | `4` | GitLab needs ≥ 4 for comfort. |
-| `VM_DISK_GB` | `50` | Root disk size. |
-| `VM_IP` | `192.168.122.60` | Must be on the libvirt `default` subnet. |
-| `VM_MAC` | `52:54:00:6b:b0:60` | Tied to the DHCP reservation. |
-| `VM_NAME` | `gitlab-test` | libvirt domain + volume name. |
+| `VM_NAME` | `debian13` | libvirt domain name of the pre-created VM. |
+| `VM_IP` | `192.168.122.7` | VM address on the libvirt `default` subnet (must match scope). |
+| `SSH_USER` | `debian` | SSH login with passwordless `sudo` in the VM. |
+| `SSH_KEY` | `~/.ssh/id_ed25519` | Private key used for SSH. |
+| `EXTERNAL_URL` | `http://<VM_IP>` | GitLab external URL. |
 
-Example: `VM_MEM_MB=16384 VM_VCPUS=8 $S up`
+Example: `VM_NAME=debian13 VM_IP=192.168.122.7 $S status`
+
+> Sizing (RAM/vCPU/disk) is a property of the VM you built by hand, not of this script.
 
 ## State & secrets
-- SSH key, `known_hosts`, and rendered `user-data.yaml` live in `findings/gitlab/vm/`
+- SSH key material and any captured VM runtime state live in `findings/gitlab/vm/`
   (git-ignored, confidential). Treat them as secrets.
 - The initial root password file inside the VM is auto-removed 24h after the first
   reconfigure. Reset it later with:
@@ -56,20 +60,18 @@ Example: `VM_MEM_MB=16384 VM_VCPUS=8 $S up`
   ```
 
 ## Accessing GitLab
-- Browse to `http://192.168.122.60` from the host (the libvirt NAT network is host-reachable).
+- Browse to `http://192.168.122.7` from the host (the libvirt NAT network is host-reachable).
 - The host firewall normally permits traffic to `virbr0`; if the page does not load, confirm
-  the VM is `running` and provisioning is `yes` via `$S status`.
+  the VM is `running` via `$S status`.
 
 ## Troubleshooting
 - **`cannot reach libvirt at qemu:///system`** — you were just added to the `libvirt` group;
   log out/in (or `exec su -l "$USER"`) and retry. Confirm with `virsh -c qemu:///system version`.
-- **SSH never comes up** — watch the boot via `$S console` (cloud-init logs to the console).
-  cloud-init details are in the VM at `/var/log/cloud-init-output.log`.
+- **SSH never comes up** — watch the boot via `$S console`; confirm the VM got `VM_IP` and
+  that your `SSH_KEY` is authorized for `SSH_USER`.
 - **GitLab slow to come up** — `$S ssh` then `sudo gitlab-ctl tail` to follow logs;
   `sudo gitlab-ctl status` to list services.
-- **IP already in use / reservation conflict** — pick another with
-  `VM_IP=192.168.122.61 VM_MAC=52:54:00:6b:b0:61 $S up` (after `destroy`).
-- **Start fresh** — `$S destroy` then `$S up`.
+- **Wrong VM adopted** — set `VM_NAME`/`VM_IP` (env or `.env`) to match the domain you built.
 
 ## Scope note
 This VM is your own lab. Do not run the `passive-recon`, `security-headers-audit`,

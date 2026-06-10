@@ -15,6 +15,8 @@ fi
 
 PROGRAM="local-lab"
 VM_IP="${VM_IP:-192.168.122.7}"
+SSH_USER="${SSH_USER:-debian}"
+SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519}"
 TARGET_URL="http://${VM_IP}"
 TS="${TS:-$(date +%Y%m%d-%H%M%S)}"
 OUT_BASE="${REPO_ROOT}/findings/${PROGRAM}"
@@ -22,32 +24,25 @@ RUN_DIR="${RUN_DIR:-${OUT_BASE}/${TS}}"
 SUBAGENTS="${RUN_DIR}/subagents"
 AUTO_SCRIPTS="${REPO_ROOT}/.sixth/skills/gitlab-autopilot/scripts"
 GDK_HELPER="${REPO_ROOT}/.sixth/skills/gitlab-test-vm/scripts/gdk-vm.sh"
+EGRESS_VERIFY="${REPO_ROOT}/.sixth/skills/gitlab-test-vm/scripts/egress-verify.sh"
+EGRESS_LOCKDOWN="${REPO_ROOT}/.sixth/skills/gitlab-test-vm/scripts/egress-lockdown.sh"
 SCOPE_FILE="${REPO_ROOT}/programs/${PROGRAM}/scope.yaml"
 GUARD="${REPO_ROOT}/.sixth/skills/scope-authorization-guard/scripts/check-scope.mjs"
+SCOPE_LIB="${REPO_ROOT}/.sixth/skills/scope-authorization-guard/scripts/scope-lib.sh"
 
 log()  { printf '\033[1;34m[thorough-audit]\033[0m %s\n' "$*" >&2; }
 warn() { printf '\033[1;33m[thorough-audit]\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31m[thorough-audit] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"; }
 
-scope_list() {
-  local section="$1"
-  awk -v sec="$section" '
-    $0 ~ "^"sec":" { inblk=1; next }
-    inblk && /^[a-z_]+:/ && $0 !~ /^[[:space:]]/ { inblk=0 }
-    inblk { line=$0; sub(/#.*/, "", line);
-      if (line ~ /^[[:space:]]*-[[:space:]]*/){ sub(/^[[:space:]]*-[[:space:]]*/, "", line); gsub(/[" ]/, "", line); if(line!="") print line } }
-  ' "$SCOPE_FILE"
-}
+# Scope parser + guard live in one sourced helper (no copy-paste drift).
+# shellcheck source=/dev/null
+. "$SCOPE_LIB"
 
 guard() {
   need node
-  local inlist outlist
   [ -f "$SCOPE_FILE" ] || die "scope file missing: $SCOPE_FILE"
-  inlist="$(scope_list in_scope | paste -sd, -)"
-  outlist="$(scope_list out_of_scope | paste -sd, -)"
-  [ -n "$inlist" ] || die "refusing to run: in_scope is empty in $SCOPE_FILE"
-  node "$GUARD" --target "$VM_IP" --in "$inlist" --out "$outlist" >/dev/null \
+  scope_guard "$VM_IP" "$SCOPE_FILE" "$GUARD" >/dev/null \
     || die "scope guard BLOCKED ${VM_IP} — refusing to run audit lanes."
 }
 
@@ -147,9 +142,25 @@ cmd_run_readonly() {
   echo "$RUN_DIR"
 }
 
+# Hard-verify (fail closed) that the VM cannot reach off-host BEFORE any
+# write-side lane. Independent of the probe's own assertion — defence in depth so
+# a forgetful operator can't run kinetic tests with egress wide open. Set
+# AUTO_LOCKDOWN=1 to apply the host nftables lockdown first (may require sudo).
+assert_egress_contained() {
+  guard
+  if [ "${AUTO_LOCKDOWN:-0}" = "1" ] && [ -f "$EGRESS_LOCKDOWN" ]; then
+    log "AUTO_LOCKDOWN=1 — applying host egress lockdown first."
+    bash "$EGRESS_LOCKDOWN" apply || warn "egress-lockdown apply returned non-zero (sudo needed?)."
+  fi
+  log "Verifying VM egress containment (fail closed)…"
+  VM_IP="$VM_IP" SSH_USER="$SSH_USER" SSH_KEY="$SSH_KEY" bash "$EGRESS_VERIFY" \
+    || die "VM egress containment UNPROVEN — refusing kinetic lane. Run: ${EGRESS_LOCKDOWN##*/} apply (or pass AUTO_LOCKDOWN=1)."
+}
+
 cmd_run_kinetic() {
   init_run
   [ -f "${SUBAGENTS}/01-gdk-runtime.md" ] || cmd_plan >/dev/null
+  assert_egress_contained
   run_lane "kinetic-privesc" "kinetic-privesc-probe.sh"
   log "Kinetic lane complete under ${RUN_DIR}"
   echo "$RUN_DIR"
@@ -216,11 +227,11 @@ Usage: $0 <command>
   plan          Create subagent task prompts under findings/local-lab/<ts>/subagents
   gdk-status    Record full-GDK readiness/status in this run directory
   run-readonly  Run auth, IDOR, role-privesc, and read-only ATT&CK lanes serially
-  run-kinetic   Run write-side kinetic lane (requires egress lockdown)
+  run-kinetic   Run write-side kinetic lane (hard-verifies egress; AUTO_LOCKDOWN=1 to apply)
   consolidate   Write CONSOLIDATED-FINDINGS.md for this run
   all           plan -> gdk-status -> run-readonly -> consolidate (no kinetic)
 
-Environment: TS RUN_DIR VM_IP SSH_USER SSH_KEY
+Environment: TS RUN_DIR VM_IP SSH_USER SSH_KEY AUTO_LOCKDOWN
 EOF
 }
 

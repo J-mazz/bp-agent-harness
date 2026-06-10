@@ -29,19 +29,10 @@ log()  { printf '\033[1;34m[auth-probe]\033[0m %s\n' "$*" >&2; }
 warn() { printf '\033[1;33m[auth-probe]\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31m[auth-probe] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 
-# --- scope gate (same parser as autopilot) -----------------------------------
-scope_list() {
-  awk -v sec="$1" '
-    $0 ~ "^"sec":" { inblk=1; next }
-    inblk && /^[a-z_]+:/ && $0 !~ /^[[:space:]]/ { inblk=0 }
-    inblk { line=$0; sub(/#.*/,"",line);
-      if (line ~ /^[[:space:]]*-[[:space:]]*/){ sub(/^[[:space:]]*-[[:space:]]*/,"",line); gsub(/[" ]/,"",line); if(line!="") print line } }
-  ' "$SCOPE_FILE"
-}
-IN_LIST="$(scope_list in_scope | paste -sd, -)"
-OUT_LIST="$(scope_list out_of_scope | paste -sd, -)"
-[ -n "$IN_LIST" ] || die "in_scope empty in $SCOPE_FILE"
-node "$GUARD" --target "$VM_IP" --in "$IN_LIST" --out "$OUT_LIST" >/dev/null \
+# --- scope gate (shared, safety-critical parser lives in scope-lib.sh) -------
+# shellcheck source=/dev/null
+. "${REPO_ROOT}/.sixth/skills/scope-authorization-guard/scripts/scope-lib.sh"
+scope_guard "$VM_IP" "$SCOPE_FILE" "$GUARD" >/dev/null \
   || die "scope guard BLOCKED $VM_IP — refusing to run."
 log "Scope OK: $VM_IP ALLOWED (read-only authenticated probe)."
 
