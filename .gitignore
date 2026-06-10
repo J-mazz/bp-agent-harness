@@ -1,0 +1,24 @@
+# Confidential target data — never commit findings, evidence, or draft reports
+findings/**
+!findings/.gitkeep
+!findings/README.md
+
+# Operator-specific program scopes may contain sensitive endpoints.
+# Commit deliberately; ignore by default. Remove the next lines to track scopes in git.
+programs/**
+!programs/.gitkeep
+!programs/_example-program/**
+
+# Secrets / local config
+.env
+.env.*
+*.local
+secrets.*
+*.pem
+*.key
+
+# Tooling output
+node_modules/
+__pycache__/
+*.log
+.DS_Store

@@ -1,0 +1,42 @@
+# Per-program scope. Copy to programs/<program>/scope.yaml and fill from the
+# official HackerOne policy. The scope-authorization-guard skill reads this file and
+# REFUSES any target that is not matched by in_scope (or that matches out_of_scope).
+#
+# Paste scope verbatim from HackerOne. Do not invent or "expand" entries.
+
+program:
+  name: ""                      # e.g. "acme"
+  platform: hackerone
+  handle: ""                    # e.g. "acme" (hackerone.com/acme)
+  policy_url: ""                # link to the program policy page
+  enrolled: false               # set true only when you are actually enrolled
+
+# Program rules you must honor (copy the relevant bits from the policy).
+rules:
+  test_accounts_only: true      # only use designated test accounts if required
+  required_user_agent: ""       # e.g. "h1-username-research" if the program requires it
+  rate_limit_note: ""           # e.g. "max 10 req/s" — harness still defaults to serial
+  prohibited:                   # program-specific prohibitions (in addition to harness RoE)
+    - "denial of service / load testing"
+    - "automated scanning without permission"
+    - "accessing other users' data"
+
+# In-scope assets. A target is allowed ONLY if it matches one of these.
+# Use explicit hosts where possible; wildcards must come straight from the policy.
+in_scope:
+  domains:
+    - "example.com"             # apex
+    - "*.example.com"           # only if the policy lists the wildcard
+  urls: []                      # specific in-scope URLs/apps, if the policy is URL-based
+  ip_ranges: []                 # only if explicitly authorized (CIDR)
+  mobile_apps: []               # package ids, if applicable
+  notes: ""
+
+# Out-of-scope — always wins over in_scope. Never touch these.
+out_of_scope:
+  domains:
+    - "blog.example.com"        # example: marketing/3rd-party host excluded by policy
+    - "*.dev.example.com"
+  urls: []
+  ip_ranges: []
+  notes: "Third-party services, staging owned by vendors, and anything not listed above."

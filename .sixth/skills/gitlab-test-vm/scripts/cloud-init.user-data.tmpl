@@ -1,0 +1,42 @@
+#cloud-config
+# Minimal OS prep for the GitLab test VM. The GitLab package itself is installed
+# afterwards by gitlab-vm.sh, which copies the local .deb in over SSH.
+# Rendered by gitlab-vm.sh: __SSH_PUBKEY__ and __EXTERNAL_URL__ are substituted.
+hostname: gitlab-test
+fqdn: gitlab-test.local
+preserve_hostname: false
+manage_etc_hosts: true
+
+users:
+  - name: debian
+    groups: [sudo]
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    shell: /bin/bash
+    lock_passwd: true
+    ssh_authorized_keys:
+      - __SSH_PUBKEY__
+
+package_update: true
+package_upgrade: false
+packages:
+  - openssh-server
+  - perl
+  - ca-certificates
+
+write_files:
+  # Pre-seed GitLab config so the .deb install uses the right external_url.
+  - path: /etc/gitlab/gitlab.rb
+    permissions: "0600"
+    owner: root:root
+    content: |
+      external_url '__EXTERNAL_URL__'
+      # Lean footprint for a single-node test box (not production tuning):
+      puma['worker_processes'] = 2
+      sidekiq['concurrency'] = 5
+      prometheus_monitoring['enable'] = false
+      grafana['enable'] = false
+      # This is YOUR test instance; keep self-registration off to mirror
+      # most real-world self-managed installs (PR:None does not apply there).
+      gitlab_rails['gitlab_signup_enabled'] = false
+
+final_message: "GitLab test VM OS ready after $UPTIME seconds"
